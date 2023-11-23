@@ -84,17 +84,12 @@ for itraj in range(ntraj//npar):
         ierr = np.zeros(npar)
         for j in range(npar):
             qt,pt,qet,pet,Et,ierr[j]=mashf90.runtrj(q[:,j], p[:,j], qe[:,j], pe[:,j], dt, nt, nf, ns)
-            # evaluate potential difference for each time step
             dvt = np.array([mashf90.mash_dv(qt[it],qet[it],pet[it],nf,ns) for it in range(nt+1)])
-            # calculate exp(-i int_0^t' V_a - V_0 dt' and add to r
             intdvt = np.zeros(nt+1)
             for i in range(1,nt+1):
                 intdvt[i] = intdvt[i-1] + .5*(dvt[i-1] + dvt[i])
-            intdvt = dt*intdvt
-            # import matplotlib.pyplot as plt
-            # plt.plot(t,dvt)
-            # plt.show()
-            Rt += np.exp(-1.j*intdvt)
+            intdvt *= dt
+            Rt += np.exp(1.j*intdvt)
 
     """ Check for failed trajectories """
     if sum(ierr)>0:
@@ -140,7 +135,7 @@ if args.obstyp=='spec':
     Rt /= ntraj
     np.savetxt('r.out',np.column_stack([t/utils.fs,np.real(Rt),np.imag(Rt)]))
 
-    I = np.fft.fft(np.real(Rt))
+    I = np.fft.fft(Rt)
     w = np.fft.fftfreq(nt+1,dt/utils.fs) # w in 1/fs
     I = np.fft.fftshift(I)
     w = np.fft.fftshift(w)

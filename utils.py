@@ -23,6 +23,7 @@ def read_args():
     conv = parser.add_argument_group("convergence")
     debye = parser.add_argument_group("debye")
     tully = parser.add_argument_group("tully")
+    frenkel = parser.add_argument_group("frenkel")
     parser.add_argument("-model", type=str, default="spinboson", help="Model system",
                         choices=["spinboson","biexciton","fmo3","fmo7","pyrazine","tully1","tully2","lh2"])
     parser.add_argument("-basis", type=str, default="site", help="Diabatic basis for certain model systems",
@@ -56,6 +57,7 @@ def read_args():
     tully.add_argument("-WPenergy",type=float,default=0.,help="Wavepacket energy")
     tully.add_argument("-gamma",type=float,default=0.,help="Wavepacket width parameter")
     tully.add_argument("-pinit",type=float,default=0.,help="Initial momentum")
+    frenkel.add_argument("-wshift",type=float,default=0.,help="Shift of excited state manifold to ground state.")
     args = parser.parse_args()
 
     """ ======= Convert input arguments to atomic units ======="""
@@ -64,6 +66,7 @@ def read_args():
         args.Delta = args.Delta * cmm1
         args.lamda = args.lamda * cmm1
         args.omegac = args.omegac * cmm1
+        args.wshift = args.wshift * cmm1
         args.dt = args.dt * fs
     if args.units=='fs':
         args.dt = args.dt * fs
@@ -153,7 +156,7 @@ def setup_model(args):
     elif model=="biexciton":
         ns = 2
         omega = np.zeros(nf,dtype=np.float64)
-        Vconst = np.array([[epsilon,Delta],[Delta,-epsilon]])
+        Vconst = np.array([[epsilon+args.wshift,Delta],[Delta,-epsilon+args.wshift]])
         nf_site = nf//ns
         fac = np.sqrt(2*args.lamda/nf_site)
         c = np.zeros(nf_site)

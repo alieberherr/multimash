@@ -4,8 +4,9 @@
 -model biexciton
 -Delta 0.0000001
 -eps 50
--lamda 50
+-lamda 150
 -omegac 200
+-wshift 1050
 -T 72
 -units cmm1
 #
@@ -14,10 +15,10 @@
 -nucsamp wigner
 #
 # Convergence options
--ntraj 1
--nt    50000
+-ntraj 100
+-nt    100000
 -dt    0.01
--nf    20
+-nf    200
 -npar 1
 -obstyp spec
 #-debug
