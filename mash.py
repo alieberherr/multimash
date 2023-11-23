@@ -7,7 +7,7 @@ import sys
 import utils
 from src import mashf90
 
-"""=========== Read input parameters=========""" 
+"""=========== Read input parameters========="""
 args = utils.read_args()
 
 """ ==== Set random seed (comment line if this is not wanted) ==== """
@@ -23,6 +23,7 @@ nt = args.nt
 ntraj = args.ntraj
 npar = args.npar
 obstyp = args.obstyp
+acl = args.acl
 
 """ Setup paralellization """
 if npar>1:
@@ -35,7 +36,7 @@ t = np.arange(nt+1)*dt
 mass, omega, nf, ns = utils.setup_model(args)
 
 """===== Initialize MASH Fortran module===="""
-mashf90.init_mash()
+mashf90.init_mash(acl)
 
 """ Debugging section to plot energy conservation, plot adiabatic populations etc. """
 if args.debug:
@@ -51,6 +52,8 @@ elif obstyp=='nuc':
     qs = []; ps = []; ws = []
     Tpop = np.zeros((nt+1,ns))
     Rpop = np.zeros((nt+1,ns))
+elif obstyp=='spec':
+    Rt = np.zeros(nt+1,dtype='complex')
 
 
 """======== Loop over trajectories ========"""
@@ -65,7 +68,7 @@ for itraj in range(ntraj//npar):
         bt, Et, ierr = mashf90.runpar_poponly(q, p, qe, pe, rep, dt, nt, nf, ns, npar)
     elif obstyp=='all':
         """ Measure dynamics of populations and coherences """
-        bt, Et, ierr = mashf90.runpar_all(q, p, qe, pe, rep, dt, nt, nf, ns, npar)    
+        bt, Et, ierr = mashf90.runpar_all(q, p, qe, pe, rep, dt, nt, nf, ns, npar)
     elif obstyp=='nuc':
         """ Measure final nuclear distribution (Tully) """
         ierr = np.zeros(npar)
@@ -77,11 +80,26 @@ for itraj in range(ntraj//npar):
             popt = np.array([mashf90.mash_pops(qt[it],qet[it],pet[it],'d',2) for it in range(nt+1)])
             Tpop += (qt>0)*popt
             Rpop += (qt<0)*popt
-            
+    elif obstyp=='spec':
+        ierr = np.zeros(npar)
+        for j in range(npar):
+            qt,pt,qet,pet,Et,ierr[j]=mashf90.runtrj(q[:,j], p[:,j], qe[:,j], pe[:,j], dt, nt, nf, ns)
+            # evaluate potential difference for each time step
+            dvt = np.array([mashf90.mash_dv(qt[it],qet[it],pet[it],nf,ns) for it in range(nt+1)])
+            # calculate exp(-i int_0^t' V_a - V_0 dt' and add to r
+            intdvt = np.zeros(nt+1)
+            for i in range(1,nt+1):
+                intdvt[i] = intdvt[i-1] + .5*(dvt[i-1] + dvt[i])
+            intdvt = dt*intdvt
+            # import matplotlib.pyplot as plt
+            # plt.plot(t,dvt)
+            # plt.show()
+            Rt += np.exp(-1.j*intdvt)
+
     """ Check for failed trajectories """
     if sum(ierr)>0:
         ndiscarded += np.sum(ierr>0)
-    
+
     """ Save observables """
     if args.obstyp in ['pop','all']:
         Bt += bt
@@ -117,3 +135,17 @@ if args.obstyp=='nuc':
     Tpop /= ntraj
     Rpop /= ntraj
     np.savetxt('scatt.out',np.column_stack([t/utils.fs,Tpop,Rpop]))
+if args.obstyp=='spec':
+    # Fourier transform response function
+    Rt /= ntraj
+    np.savetxt('r.out',np.column_stack([t/utils.fs,np.real(Rt),np.imag(Rt)]))
+
+    I = np.fft.fft(np.real(Rt))
+    w = np.fft.fftfreq(nt+1,dt/utils.fs) # w in 1/fs
+    I = np.fft.fftshift(I)
+    w = np.fft.fftshift(w)
+
+    # transform w to cm-1
+    c = 2.99792e8
+    w = w * 1e13/c
+    np.savetxt('I.out',np.column_stack([w,np.real(I),np.imag(I)]))

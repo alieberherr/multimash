@@ -9,6 +9,8 @@ module pes
    procedure (grad_interface), pointer :: grad
    procedure (grad_a_interface), pointer :: grad_a
    procedure (grad_ab_interface), pointer :: grad_ab
+   procedure (potgs_interface), pointer :: potgs
+   procedure (gradgs_interface), pointer :: gradgs
 
    interface
       subroutine pot_interface(q,V)
@@ -18,12 +20,26 @@ module pes
          real(dp), intent(out) :: V(ns,ns)
       end subroutine pot_interface
 
+      subroutine potgs_interface(q,V)
+         ! Ground state potential
+         import dp
+         real(dp), intent(in) :: q(:)
+         real(dp), intent(out) :: V
+      end subroutine potgs_interface
+
       subroutine grad_interface(q,dVdq)
          ! Diabatic gradient matrix
          import nf,ns,dp
          real(dp), intent(in) :: q(:)
          real(dp), intent(out) :: dVdq(nf,ns,ns)
       end subroutine grad_interface
+
+      subroutine gradgs_interface(q,dVdq)
+         ! Ground state gradient vector
+         import nf,dp
+         real(dp), intent(in) :: q(:)
+         real(dp), intent(out) :: dVdq(nf)
+      end subroutine gradgs_interface
 
       subroutine grad_ab_interface(q,U,dVdq)
          ! Adiabatic gradient matrix
@@ -48,7 +64,7 @@ module pes
       ns = ns_
       if (.not. allocated(mass)) allocate(mass(nf))
       mass = mass_
-      ! Default adiabatic routines: compute from diabatic 
+      ! Default adiabatic routines: compute from diabatic
       grad_a => gradad_diag
       grad_ab => gradad
    end subroutine
@@ -73,7 +89,7 @@ module pes
       real(dp), allocatable :: Gdia(:,:,:)
 
       allocate(Gdia(nf,ns,ns))
-      
+
       ! get H' in diabatic basis
       call grad(q,Gdia)
 
@@ -95,7 +111,7 @@ module pes
       real(dp), allocatable :: Gdia(:,:,:)
 
       allocate(Gdia(nf,ns,ns))
-      
+
       ! get H' in diabatic basis
       call grad(q,Gdia)
 

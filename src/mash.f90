@@ -6,13 +6,15 @@ module mash
    implicit double precision (a-h,o-z)
 
    real(dp) :: alpha  ! ns-dependent constant in observables
+   logical :: acl
 
 
 contains
 
 ! =============== Initialization =============
-   subroutine init()
+   subroutine init(acl_)
       use pes, only : ns
+      logical :: acl_
 !
 !    Initialize module
 !
@@ -21,6 +23,7 @@ contains
          Hn = Hn + 1.d0/n
       end do
       alpha = (ns-1.d0)/(Hn-1.d0)
+      acl = acl_
    end subroutine
 
 
@@ -97,7 +100,7 @@ contains
       use pes, only : ns
       complex(dpc), intent(in) :: ca(:)
       integer :: a, b
-! 
+!
 !     Get state b with second-highest population excluding a
 !
       real(dp), allocatable :: pop(:)
@@ -118,9 +121,9 @@ contains
       integer :: typ
       logical :: poponly
 !
-!  Calculate binned observables in given representation. 
+!  Calculate binned observables in given representation.
 !     obs(k,k) -- population
-!     obs(k,l) -- coherence 
+!     obs(k,l) -- coherence
 !
 !     typ==1 -- binned (Theta function)
 !     typ==2 -- weighted in the Phin way
@@ -205,7 +208,7 @@ contains
 
 ! =============== Dynamics-related subroutines ===============
    subroutine evolve(q, p, qe, pe, Vad, U, dvdq, a, dtbase, ierr)
-      use pes, only : nf, ns, grad_a
+      use pes, only : nf, ns, grad_a, gradgs
       real(dp), intent(inout) :: q(:), p(:), qe(:), pe(:), Vad(:), &
                                  U(:,:), dvdq(:)
       integer, intent(inout) :: a, ierr
@@ -218,6 +221,7 @@ contains
 !
 !     Perform a time step
 !
+      real(dp), allocatable :: dvdq_gs(:)
       allocate(q0(nf),p0(nf),qe0(ns),pe0(ns),Vad0(ns),U0(ns,ns),dvdq0(nf))
       allocate(ca0(ns),ca1(ns))
 
@@ -227,10 +231,10 @@ contains
       do ihop=1,maxhop ! Limit number of hops to look for in a timestep dt
          ! Store initial values
          call savetmp(q,p,qe,pe,Vad,U,dvdq,q0,p0,qe0,pe0,Vad0,U0,dvdq0)
-      
+
          ! Store initial adiabatic wavefunction
          ca0 = dcmplx(matmul(qe,U),matmul(pe,U))
-         
+
          ! Attempt full step
          call verlet(q,p,qe,pe,Vad,U,dvdq,a,dt)
 
@@ -273,6 +277,12 @@ contains
             call cross(q, p, ca1, a, b, Vad, U, accepted)
             if (accepted) then
                call grad_a(q,U,b,dvdq)
+               if (acl) then
+                  allocate(dvdq_gs(nf))
+                  call gradgs(q,dvdq_gs)
+                  dvdq = .5*(dvdq + dvdq_gs)
+                  deallocate(dvdq_gs)
+               endif
                a = b
             end if
             dt = dt - tx
@@ -298,7 +308,7 @@ contains
 
    subroutine savetmp(q,p,qe,pe,Vad,U,dvdq,q0,p0,qe0,pe0,Vad0,U0,dvdq0)
       real(dp), intent(inout) :: q(:),p(:),qe(:),pe(:),Vad(:),U(:,:),dvdq(:),&
-            q0(:),p0(:),qe0(:),pe0(:), Vad0(:),U0(:,:),dvdq0(:)   
+            q0(:),p0(:),qe0(:),pe0(:), Vad0(:),U0(:,:),dvdq0(:)
 !
 !     Store temporary variables and potential information
 !
@@ -313,7 +323,7 @@ contains
 
 
    subroutine verlet(q, p, qe, pe, Vad, U, dvdq, a, dt)
-      use pes, only : potad, grad_a
+      use pes, only : nf, potad, grad_a, gradgs
       real(dp), intent(inout) :: q(:), p(:), qe(:), pe(:), Vad(:), &
                                  U(:,:), dvdq(:)
       integer, intent(in) :: a
@@ -321,12 +331,19 @@ contains
 !
 !     Perform a time step on state n
 !
+      real(dp), allocatable :: dvdq_gs(:)
       dt2 = dt/2
       call step_e(qe,pe,Vad,U,dt2)
       call step_p(p,dvdq,dt2)
       call step_q(q,p,dt)
       call potad(q, Vad, U)
       call grad_a(q,U,a,dvdq)
+      if (acl) then
+         allocate(dvdq_gs(nf))
+         call gradgs(q,dvdq_gs)
+         dvdq = .5*(dvdq + dvdq_gs)
+         deallocate(dvdq_gs)
+      endif
       call step_p(p,dvdq,dt2)
       call step_e(qe,pe,Vad,U,dt2)
    end subroutine
@@ -386,7 +403,7 @@ contains
       allocate(d(nf,ns,ns),dj(nf),pnac(nf),porth(nf))
       call nacdir(q,cad,Vad,U,n,m,dj)
       dj = dj/sqrt(mass)
-      
+
       ! Use mass-scaled momenta
       p = p/sqrt(mass)
       if (nf.eq.1) then
@@ -399,7 +416,7 @@ contains
       Ekin = 0.5d0*sum(pnac**2) !/mass)
       Vdiff = Vad(m)-Vad(n)
       if ((Ekin-Vdiff).gt.0.d0) then
-         ! Rescale momentum 
+         ! Rescale momentum
          pnac = sqrt(2.d0*(Ekin-Vdiff)) & ! (no masses since p is mass-scaled)
              * pnac/sqrt(dot_product(pnac,pnac))
          p = porth + pnac
@@ -426,7 +443,7 @@ contains
       pt(it,:) = p
       qet(it,:) = qe
       pet(it,:) = pe
-   end subroutine 
+   end subroutine
 
 
 end module

@@ -1,0 +1,26 @@
+# Biexciton model with Debye bath
+#
+# System
+-model biexciton
+-Delta 0.0000001
+-eps 50
+-lamda 50
+-omegac 200
+-T 72
+-units cmm1
+#
+# MASH options
+-init 0
+-nucsamp wigner
+#
+# Convergence options
+-ntraj 1
+-nt    50000
+-dt    0.01
+-nf    20
+-npar 1
+-obstyp spec
+#-debug
+#
+# GS/PES averaging
+-acl

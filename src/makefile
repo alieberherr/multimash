@@ -1,6 +1,6 @@
 MODULE=mashf90
 # If you add any further potential module files, add them to the next line (must appear later than pes.o)
-OBJ=types.o pes.o linvib.o bilinvib.o frexc.o tully.o mash.o
+OBJ=types.o pes.o linvib.o bilinvib.o frexc.o biexciton.o tully.o mash.o
 LIBS=-llapack
 
 debug: FC=gfortran -g -fPIC -Wall -Wextra -Wconversion -pedantic --check=all

@@ -37,6 +37,18 @@ subroutine init_frexc(mass,omega,Vconst,kappa,nf,nf_bath,ns)
    call init(nf,ns,mass,omega,Vconst,kappa)
 end subroutine
 
+subroutine init_biexc(mass,omega,Vconst,kappa,nf,nf_bath,ns)
+   use types
+   use biexciton, only : init
+   integer  :: nf,ns
+   real(dp) :: mass(nf), omega(nf)
+   real(dp) :: Vconst(ns,ns), kappa(nf_bath)
+!
+!  Initialize Frenkel-biexciton potential
+!
+   call init(nf,ns,mass,omega,Vconst,kappa)
+end subroutine
+
 subroutine init_tully(model,mass)
    use types
    use tully, only : init
@@ -50,13 +62,14 @@ end subroutine
 
 ! ================ General initializations =====================
 
-subroutine init_mash()
+subroutine init_mash(acl)
    use types
    use mash, only : init
+   logical :: acl
 !
 !  Initialize MASH module.
 !
-   call init()
+   call init(acl)
 end subroutine
 
 ! ================ Useful wrappers for potentials etc. =================
@@ -101,20 +114,26 @@ end subroutine
 
 subroutine mashgrad(q,qe,pe,nf,ns,dvdq)
    use types
-   use pes, only : potad, grad_a
-   use mash, only : cstate
+   use pes, only : potad, grad_a, gradgs
+   use mash, only : cstate, acl
    integer, intent(in) :: nf, ns
    real(dp), intent(in) :: q(nf), qe(ns), pe(ns)
    real(dp), intent(out) :: dvdq(nf)
 !
 !  Wrapper for gradient
 !
-   real(dp), allocatable :: Vad(:), U(:,:)
+   real(dp), allocatable :: Vad(:), U(:,:), dvdq_gs(:)
    integer :: a
    allocate(Vad(ns),U(ns,ns))
    call potad(q, Vad, U)
    call cstate(qe,pe,U,a)
    call grad_a(q, U, a, dvdq)
+   if (acl) then
+      allocate(dvdq_gs(nf))
+      call gradgs(q,dvdq_gs)
+      dvdq = .5*(dvdq + dvdq_gs)
+      deallocate(dvdq_gs)
+   endif
    deallocate(Vad, U)
 end subroutine
 
@@ -178,14 +197,34 @@ subroutine mash_pops(q, qe, pe, pop, rep, typ, nf, ns)
    call pops(q, qe, pe, pop, rep, typ)
 end subroutine
 
+subroutine mash_dv(q, qe, pe, dV, nf, ns)
+   use types
+   use pes, only : potad, potgs
+   use mash, only : cstate
+   real(dp), intent(in) :: q(nf), qe(ns), pe(ns)
+   integer, intent(in) :: nf, ns
+   real(dp), intent(out) :: dV
+!
+!  Wrapper for response function
+!
+   real(dp), allocatable :: Vad(:),U(:,:)
+   real(dp) :: V0
+   integer :: a
+   allocate(U(ns,ns),Vad(ns))
+   call potad(q,Vad,U)
+   call cstate(qe,pe,U,a)
+   call potgs(q,V0)
+   dV = Vad(a)-V0
+end subroutine
+
 
 
 ! =============== Main function for running a trajectory ===============
 subroutine runtrj(q, p, qe, pe, qt, pt, qet, pet, Et, &
    dt, ierr, nt, nf, ns)
    use types
-   use pes, only : potad, grad_a
-   use mash, only : store, evolve, ham, cstate
+   use pes, only : potad, grad_a, gradgs
+   use mash, only : store, evolve, ham, cstate, acl
    integer :: nt, nf, ns
    real(dp), intent(in) :: dt
    real(dp), intent(inout) :: q(nf), p(nf), qe(ns), pe(ns)
@@ -195,7 +234,7 @@ subroutine runtrj(q, p, qe, pe, qt, pt, qet, pet, Et, &
 !
 !  Run a trajectory
 !
-   real(dp), allocatable :: Vad(:), U(:,:), dvdq(:)
+   real(dp), allocatable :: Vad(:), U(:,:), dvdq(:), dvdq_gs(:)
    ! logical :: fromfile = .false. ! Debugging option
    integer :: a !, atmp
 
@@ -217,6 +256,12 @@ subroutine runtrj(q, p, qe, pe, qt, pt, qet, pet, Et, &
    ! end if
 
    call grad_a(q,U,a,dvdq)
+   if (acl) then
+      allocate(dvdq_gs(nf))
+      call gradgs(q,dvdq_gs)
+      dvdq = .5*(dvdq + dvdq_gs)
+      deallocate(dvdq_gs)
+   endif
    do it = 1, nt
       call store(q, p, qe, pe, it, qt, pt, qet, pet)
       Et(it) = ham(q,p,qe,pe)
@@ -323,7 +368,7 @@ subroutine runpar_all(q, p, qe, pe, bdt, Et, ierr, rep, &
          pt(:,:,j), qet(:,:,j), pet(:,:,j), dEt(:,j),  &
          dt, ierr(j), nt, nf, ns)
       do it=1,nt+1
-         call obsbls(qt(it,:,j), qet(it,:,j), pet(it,:,j), & 
+         call obsbls(qt(it,:,j), qet(it,:,j), pet(it,:,j), &
             dbt(it,:,:,j), rep, 2, .false.)
       end do
       if (ierr(j).ne.0) then

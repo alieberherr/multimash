@@ -23,16 +23,16 @@ def read_args():
     conv = parser.add_argument_group("convergence")
     debye = parser.add_argument_group("debye")
     tully = parser.add_argument_group("tully")
-    parser.add_argument("-model", type=str, default="spinboson", help="Model system", 
+    parser.add_argument("-model", type=str, default="spinboson", help="Model system",
                         choices=["spinboson","biexciton","fmo3","fmo7","pyrazine","tully1","tully2","lh2"])
-    parser.add_argument("-basis", type=str, default="site", help="Diabatic basis for certain model systems", 
+    parser.add_argument("-basis", type=str, default="site", help="Diabatic basis for certain model systems",
                         choices=["exc","site","adia"])
-    parser.add_argument("-units", type=str, default="au",help="""Choose unit system. 
-                        cmm1: input in cmm1, output in fs. 
+    parser.add_argument("-units", type=str, default="au",help="""Choose unit system.
+                        cmm1: input in cmm1, output in fs.
                         fs: input in fs, output in fs. """,
                         choices=["au","cmm1","fs"])
-    parser.add_argument("-obstyp", type=str, default="pop", help="Observable types", 
-                        choices=["pop","all","mannrich","nuc"])
+    parser.add_argument("-obstyp", type=str, default="pop", help="Observable types",
+                        choices=["pop","all","mannrich","nuc","spec"])
     parser.add_argument("-init", type=int,help="Initial state (in Python indexing)")
     parser.add_argument("-initbasis",type=str,default='dia',choices=["dia","adia","exc"],help='Basis for initial state')
     parser.add_argument("-nucsamp",type=str,default='cl', help="Nuclear sampling (in case 'init' is not None). GS=ground state, WP=wavepacket",
@@ -43,6 +43,7 @@ def read_args():
                         choices=['mash','fssh'])
     parser.add_argument("-beta",type=float,default=1.,help="Reciprocal temperature [in a.u.]")
     parser.add_argument("-T",type=float,default=0,help="Temperature [in kelvin]")
+    parser.add_argument("-acl",action="store_true",help="Toggle between evolution on excited state manifold only and average of ground + excited states")
     conv.add_argument("-dt",default=41,type=float,help="Time step")
     conv.add_argument("-nt","-TS",type=int,help="Number of time steps")
     conv.add_argument("-ntraj","-traj",type=int,help="Number of trajectories")
@@ -68,7 +69,7 @@ def read_args():
         args.dt = args.dt * fs
     if args.T:
         args.beta = 1./(kB*args.T)
-    
+
     return args
 
 
@@ -149,6 +150,18 @@ def setup_model(args):
         for i in range(ns):
             omega[i*nf_site:(i+1)*nf_site] = omega[:nf_site]
             Vlin[i*nf_site:(i+1)*nf_site,i,i] = c
+    elif model=="biexciton":
+        ns = 2
+        omega = np.zeros(nf,dtype=np.float64)
+        Vconst = np.array([[epsilon,Delta],[Delta,-epsilon]])
+        nf_site = nf//ns
+        fac = np.sqrt(2*args.lamda/nf_site)
+        c = np.zeros(nf_site)
+        for i in range(nf_site):
+            omega[i] = args.omegac*np.tan(0.5*np.pi*(i+0.5)/nf_site)
+            c[i] = fac*omega[i]
+        for i in range(ns):
+            omega[i*nf_site:(i+1)*nf_site] = omega[:nf_site]
 
     """ ======= Initialize mass ======= """
     mass = np.ones(nf)
@@ -157,10 +170,12 @@ def setup_model(args):
     if 'tully' in model:
         nf = 1
         ns = 2
-        mass = np.ones(1)*2000. 
+        mass = np.ones(1)*2000.
         mashf90.init_tully(model[-1],mass)
     elif model in ['fmo3','fmo7']:
-        mashf90.init_frexc(mass,omega,Vconst,c,nf,nf_site,ns)  
+        mashf90.init_frexc(mass,omega,Vconst,c,nf,nf_site,ns)
+    elif model == 'biexciton':
+        mashf90.init_biexc(mass,omega,Vconst,c,nf,nf_site,ns)
     else:
         mashf90.init_linvib(mass,omega,Vconst,Vlin,nf,ns)
 
@@ -189,7 +204,7 @@ def debug(args,mass,omega,nf,ns):
         qa[it],pa[it] = mashf90.dia2ad(q[it],qe[it],pe[it])
         popa[it] = qa[it]**2 + pa[it]**2
     for n in range(ns):
-        label=str(n) 
+        label=str(n)
         plt.plot(t,popa[:,n],'-',color='C%i'%n,alpha=0.5,label=label)
     plt.legend()
 
